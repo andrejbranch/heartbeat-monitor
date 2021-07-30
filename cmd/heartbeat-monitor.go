@@ -43,13 +43,14 @@ func main() {
 		interval       = kingpin.Flag("interval", "poll interval for querying the service").Default("3s").Duration()
 		serviceAddress = kingpin.Flag("service-address", "Service address").Default("host.docker.internal:8080").String()
 		metricsPort    = kingpin.Flag("metrics-port", "Port to serve metrics").Default("9957").Int()
+		viewKey        = kingpin.Flag("view-key", "View key").Default("collectors/ring").String()
 	)
 	kingpin.Parse()
 	logger := log.New(log.Writer(), "ingester-heartbeat", log.Lmicroseconds)
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	monitor := NewHeartbeatMonitor(logger, *interval, *serviceAddress)
+	monitor := NewHeartbeatMonitor(logger, *interval, *serviceAddress, *viewKey)
 	monitor.Start(ctx)
 	exposeMetrics(logger, *metricsPort)
 	for {
@@ -64,13 +65,15 @@ type HeartbeatMonitor struct {
 	logger       *log.Logger
 	pollInterval time.Duration
 	serviceAddr  string
+	viewKey      string
 }
 
-func NewHeartbeatMonitor(logger *log.Logger, pollInterval time.Duration, serviceAddr string) *HeartbeatMonitor {
+func NewHeartbeatMonitor(logger *log.Logger, pollInterval time.Duration, serviceAddr string, viewKey string) *HeartbeatMonitor {
 	return &HeartbeatMonitor{
 		logger:       logger,
 		serviceAddr:  serviceAddr,
 		pollInterval: pollInterval,
+		viewKey:      viewKey,
 	}
 }
 
@@ -94,7 +97,7 @@ func (h *HeartbeatMonitor) Start(ctx context.Context) {
 }
 
 func (h *HeartbeatMonitor) poll(ctx context.Context) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/memberlist?viewKey=collectorsBlocks/ring&format=json-pretty", h.serviceAddr))
+	resp, err := http.Get(fmt.Sprintf("http://%s/memberlist?viewKey=%s&format=json-pretty", h.serviceAddr, h.viewKey))
 	currentTime := time.Now().Unix()
 	if err != nil {
 		h.logger.Fatal("failed getting response from service")
